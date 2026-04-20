@@ -6,44 +6,53 @@ The KN Hack 2026 is a team-based investment strategy challenge (teams of 2 to 4 
 
 The `Investment_Strategy_Example/` folder contains a full, runnable stock-picking strategy built on the KaxaNuk framework. It is organized as three sequential steps:
 
-## Step 1 — Data Curator (`run_data_curator.py`)
+## Step 1 — Data Curator
 
 Downloads market and fundamental data from your configured data providers (Financial Modeling Prep, LSEG Workspace, or Yahoo Finance), runs custom signal calculations (e.g. the 50/200-day SMA crossover signal), and writes enriched per-ticker datasets to `Data_Curator/` as CSV and Parquet files.
 
 Configuration lives in `Config/data_curator_parameters.xlsx`. API keys go in `Config/.env` (copy from `Config/.env_template`).
 
-```bash
-cd Investment_Strategy_Example
-python run_data_curator.py
-```
+Open and run `Investment_Strategy_Example/run_data_curator.py`.
 
-## Step 2 — Portfolio Construction (`run_portfolio_construction.py`)
+## Step 2 — Portfolio Construction
 
-Reads the enriched data from `Data_Curator/`, applies selection and sizing rules (liquidity-weighted, signal-filtered, capped at 20% per position), and produces a historical portfolio weights file at `Portfolio_Construction/portfolio_weights.csv`. This lets you validate and inspect the strategy hypothesis before running the full backtest.
+Reads the enriched data from `Data_Curator/`, applies selection and sizing rules (liquidity-weighted, signal-filtered, capped at 20% per position), and produces a historical portfolio weights file at `Portfolio_Construction/portfolio_weights.csv`.
 
-```bash
-python run_portfolio_construction.py
-```
+Open and run `Investment_Strategy_Example/run_portfolio_construction.py`.
 
-## Step 3 — Backtest Engine (`run_backtest_engine.py`)
+## Step 3 — Backtest Engine
 
 Uses the KaxaNuk Backtest Engine library to run a historical simulation over the portfolio weights produced in Step 2. Configuration lives in `Config/backtest_engine_parameters.xlsx`. Results and a performance dashboard are written to `Backtest_Engine/`.
 
-```bash
-python run_backtest_engine.py
-```
+Open and run `Investment_Strategy_Example/run_backtest_engine.py`.
 
 ## Setup
 
-Install dependencies (Python >=3.12, <3.15 required):
+Python >=3.12, <3.15 is required.
+
+Install scientific and calendar libraries:
+
+```bash
+pip install numpy pandas openpyxl QuantLib
+```
+
+Install the KaxaNuk Data Curator and Yahoo Finance extension:
 
 ```bash
 pip install kaxanuk.data_curator kaxanuk.data_curator_extensions.yahoo_finance
 ```
 
+Install the KaxaNuk Backtest Engine (replace `https://license:{YOUR_LICENSE_KEY}@{SERVER}/simple/` with your license key):
+
+If you already registered and paid for the KN Hack 2026, we will send you the license key via email. Please check your inbox and spam folder.
+
+For questions please email us to software@kaxanuk.mx.
+
 ```bash
-pip install kaxanuk-backtest-engine --extra-index-url https://license:LIC-XXXX
+pip install kaxanuk-backtest-engine --extra-index-url https://license:{YOUR_LICENSE_KEY}@{SERVER}/simple/
 ```
+
+Mark `Investment_Strategy_Example/src` as a source root in your IDE so that imports resolve correctly (in PyCharm: right-click the folder → Mark Directory as → Sources Root; in VS Code: add it to `python.analysis.extraPaths` in your settings).
 
 Copy the environment template and fill in your API keys:
 

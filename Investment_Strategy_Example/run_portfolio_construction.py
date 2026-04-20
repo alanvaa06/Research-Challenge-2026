@@ -1,108 +1,110 @@
 """
-Liquidity-Weighted Trend Strategy — Portfolio Construction
-==========================================================
+Entry script that builds a historical portfolio-weights file from the enriched
+data produced by the Data Curator step.
 
-Rules (from S03 Portfolio Construction & Strategy Modeling)
------------------------------------------------------------
+Strategy summary
+----------------
+Selection
+    On each trading day T, stocks are eligible if:
+      - the 50/200-day SMA crossover signal (c_sma_50d_200d_signal) equals 1
+        on T-1 (bullish trend);
+      - single-day traded value (c_daily_traded_value_1d) >= $10 M on T-1;
+      - adjusted close is valid and positive on T (tradability guard);
+      - the ticker is not in the excluded set (delisted or being force-removed).
+    The top MAX_POSITIONS stocks are then selected by 63-day average traded
+    value (c_daily_traded_value_63d), descending.
 
-**Selection:**
-    - Securities with ``c_sma_50d_200d_signal == 1`` are eligible.
-    - Single-day traded value (``c_daily_traded_value_1d``) >=
-      ``MIN_DAILY_TRADED_VALUE`` ($10 M floor).
-    - Rank eligible securities by ``c_daily_traded_value_63d`` (descending).
-    - Select the top ``MAX_POSITIONS`` securities.
+Sizing
+    Weights are proportional to 63-day average traded value among the selected
+    stocks, then capped at MAX_WEIGHT (20 %) per position, with the excess
+    redistributed proportionally until all weights are within the cap.
 
-**Sizing:**
-    - Weights are proportional to 63-day average traded value among selected
-      securities.
-    - Maximum ``MAX_WEIGHT`` per position.
-    - Excess weight is redistributed proportionally.
+Market-regime handling
+    When fewer than MIN_ELIGIBLE_STOCKS (20) stocks pass the filters, the
+    portfolio switches to 100 % SPY (bear-market / low-signal regime). It
+    exits back to stocks only when eligible stocks >= REENTRY_THRESHOLD (25),
+    providing hysteresis to avoid excessive whipsawing at the boundary.
 
-**Timing:**
-    Rebalance when any of the following occurs:
-        * A security enters the top-``MAX_POSITIONS``.
-        * A security exits the top-``MAX_POSITIONS``.
-        * Transition into / out of SPY-only regime.
-        * A held constituent becomes untradable (rebalance on T-1).
+Rebalance triggers
+    A new portfolio is recorded whenever:
+      - the set of selected top-N stocks changes;
+      - the portfolio transitions into or out of the SPY regime;
+      - a currently held stock must be force-sold due to delisting / becoming
+        untradable (sold on T-1, the last healthy day before data disappears).
 
-**Market Regime Handling:**
-    - If fewer than ``MIN_ELIGIBLE_STOCKS`` stocks pass selection filters,
-      invest 100 % in SPY ETF.
-    - Exit the SPY regime when eligible stocks >= ``REENTRY_THRESHOLD``
-      (hysteresis) to avoid excessive rebalancing.
+Timing
+    All selection inputs (signal, traded value, benchmark membership) are read
+    from T-1 close so that no future information is used. The adjusted close is
+    read from T only as a tradability guard. Each rebalance is recorded under
+    its signal date (T-1) and then shifted by one NYSE trading day to produce
+    the implementation date T in the output file.
 
-**Delisting / Untradable Handling:**
-    - For each ticker, check raw close (``m_close_split_adjusted``) and
-      volume (``m_volume_split_adjusted``).
-    - A ticker is flagged as untradable when:
-        * It has no valid adjusted close
-          (``m_close_dividend_and_split_adjusted``) on a given date, **or**
-        * In a trailing window of ``DELIST_LOOKBACK_DAYS``, the fraction of
-          days with missing raw close or zero volume >=
-          ``DELIST_MISSING_THRESHOLD``.
-    - The forced rebalance to sell the ticker fires on T-1 (the last
-      healthy day before problems start).
-    - From the exclude date onward the ticker is permanently ineligible.
-
-**Signal timing:**
-    All signal, traded-value, and liquidity data used on day T comes from
-    day T-1 (previous close), ensuring decisions are based exclusively on
-    data known before T opens. Same-day adjusted close is used only as a
-    tradability guard.
-
-**Output:**
-    - Rows = tickers (alphabetical).
-    - Columns = rebalance dates only.
-    - Values = portfolio weights (rounded to 9 decimals).
+Output
+    Portfolio_Construction/portfolio_weights.csv
+        Rows  = tickers (alphabetical), always including SPY.
+        Columns = implementation dates of rebalance events (YYYY-MM-DD).
+        Values  = portfolio weights rounded to 9 decimal places.
+        Dates with no rebalance are omitted.
 """
 
 import pathlib
 
 import numpy
 import pandas
+import QuantLib as ql
 
 
-# ==============================================================================
+# -------------------------------------------------------------------
 # PATHS
-# ==============================================================================
-DATA_DIR = pathlib.Path(r"Data_Curator")
-CONFIG_DIR = pathlib.Path(r"Config")
-OUTPUT_DIR = pathlib.Path(r"Portfolio_Construction")
-BENCHMARK_DIR = pathlib.Path(r"Benchmark_Portfolios")
+# -------------------------------------------------------------------
+DATA_DIR = pathlib.Path(r"Data_Curator")        # enriched CSVs from the Data Curator step
+CONFIG_DIR = pathlib.Path(r"Config")             # Excel config and .env files
+OUTPUT_DIR = pathlib.Path(r"Portfolio_Construction")   # weights CSV written here
+BENCHMARK_DIR = pathlib.Path(r"Benchmark_Portfolios")  # optional benchmark holdings CSV
 
-# ==============================================================================
+# -------------------------------------------------------------------
 # STRATEGY PARAMETERS
-# ==============================================================================
-MAX_POSITIONS = 20
-MAX_WEIGHT = 0.20
-MIN_DAILY_TRADED_VALUE = 10_000_000   # $10 M single-day floor for eligibility
-SPY_TICKER = "SPY"
+# -------------------------------------------------------------------
+MAX_POSITIONS = 20          # maximum number of stocks held at any time
+MAX_WEIGHT = 0.20           # maximum weight per position (20 %)
+MIN_DAILY_TRADED_VALUE = 10_000_000   # minimum single-day traded value for eligibility ($10 M)
+SPY_TICKER = "SPY"          # fallback ETF used during bear-market / low-signal regime
 
-MIN_ELIGIBLE_STOCKS = 20   # Enter SPY regime below this threshold
-REENTRY_THRESHOLD = 25     # Exit SPY regime at or above this threshold
+# Hysteresis thresholds for the SPY regime:
+#   enter SPY when eligible stocks < MIN_ELIGIBLE_STOCKS
+#   exit  SPY when eligible stocks >= REENTRY_THRESHOLD
+MIN_ELIGIBLE_STOCKS = 20
+REENTRY_THRESHOLD = 25
 
+# Column names as they appear in the Data Curator output CSVs
 COL_DATE = "m_date"
 COL_TICKER = "Ticker"
-COL_SIGNAL = "c_sma_50d_200d_signal"
-COL_TRADED_VALUE_1D = "c_daily_traded_value_1d"
-COL_TRADED_VALUE_63D = "c_daily_traded_value_63d"
-COL_CLOSE = "m_close_dividend_and_split_adjusted"
-COL_CLOSE_RAW = "m_close_split_adjusted"
-COL_VOLUME = "m_volume_split_adjusted"
+COL_SIGNAL = "c_sma_50d_200d_signal"           # 1 = bullish crossover, 0 = otherwise
+COL_TRADED_VALUE_1D = "c_daily_traded_value_1d"   # single-day traded value (liquidity floor)
+COL_TRADED_VALUE_63D = "c_daily_traded_value_63d" # 63-day avg traded value (ranking & sizing)
+COL_CLOSE = "m_close_dividend_and_split_adjusted" # adjusted close (tradability guard)
+COL_CLOSE_RAW = "m_close_split_adjusted"          # split-adjusted close (delisting detection)
+COL_VOLUME = "m_volume_split_adjusted"            # split-adjusted volume (delisting detection)
 
-# Delisting / untradable detection parameters
-DELIST_LOOKBACK_DAYS = 21       # trailing window size (trading days)
-DELIST_MISSING_THRESHOLD = 0.05  # fraction of missing days to flag as untradable
+# Delisting / untradable detection: flag a ticker when more than
+# DELIST_MISSING_THRESHOLD of the last DELIST_LOOKBACK_DAYS days
+# have missing raw close or zero volume.
+DELIST_LOOKBACK_DAYS = 21
+DELIST_MISSING_THRESHOLD = 0.05
 
+# Backtest window — PORTFOLIO_END is the last signal date (not the last trade date).
+# The last output column will be the next NYSE trading day after PORTFOLIO_END.
 PORTFOLIO_START = pandas.Timestamp("2015-01-01")
 PORTFOLIO_END = pandas.Timestamp("2026-04-17")
 
 
-# ==============================================================================
-# 1. DATA LOADING
-# ==============================================================================
+# -------------------------------------------------------------------
+# DATA LOADING
+# -------------------------------------------------------------------
+
 def _read_config_tickers() -> list[str]:
-    """Read ticker universe from the Identifiers sheet, main_identifier column."""
+    # Read the ordered ticker universe from the Excel config so we only
+    # load CSVs for tickers the strategy is configured to trade.
     config_path = CONFIG_DIR / "data_curator_parameters.xlsx"
     if not config_path.exists():
         return []
@@ -123,12 +125,9 @@ def _read_config_tickers() -> list[str]:
 
 
 def load_benchmark_holdings() -> pandas.DataFrame | None:
-    """
-    Load benchmark_portfolio_holdings.csv and return a date × ticker boolean matrix.
-
-    Tickers with a non-zero value on a given date are considered part of the benchmark.
-    Returns None if the file does not exist (benchmark filter is then skipped).
-    """
+    # Load the optional benchmark holdings matrix (date × ticker).
+    # When present, only tickers held in the benchmark on T-1 are eligible
+    # for selection, which constrains the strategy to the benchmark universe.
     csv_path = BENCHMARK_DIR / "benchmark_portfolio_holdings.csv"
     if not csv_path.exists():
         print(f"  Benchmark file not found: {csv_path} — benchmark filter disabled.")
@@ -147,7 +146,9 @@ def load_benchmark_holdings() -> pandas.DataFrame | None:
 
 
 def load_data() -> tuple[pandas.DataFrame, list[str], list[str]]:
-    """Load all ticker CSVs from DATA_DIR and return a single long DataFrame."""
+    # Scan DATA_DIR for per-ticker CSVs produced by the Data Curator, then
+    # load only the tickers listed in the config (or all CSVs if no config).
+    # Returns a single long-format DataFrame plus lists of loaded / missing tickers.
     csv_paths = {csv_file.stem: csv_file for csv_file in sorted(DATA_DIR.glob("*.csv"))}
     print(f"  CSV files found: {len(csv_paths)}")
 
@@ -182,6 +183,7 @@ def load_data() -> tuple[pandas.DataFrame, list[str], list[str]]:
 
     data = pandas.concat(frames, ignore_index=True)
 
+    # Tolerate minor date-column name variations from different Data Curator versions
     if COL_DATE not in data.columns:
         for col in data.columns:
             if "date" in col.lower():
@@ -199,11 +201,9 @@ def load_data() -> tuple[pandas.DataFrame, list[str], list[str]]:
     return data, loaded, missing
 
 
-# ==============================================================================
-# 2. FEATURE VALIDATION
-# ==============================================================================
 def validate_features(data: pandas.DataFrame) -> None:
-    """Ensure the required columns exist and contain data."""
+    # Abort early if any required signal or price column is absent or all-null,
+    # so the error is clear rather than surfacing as a silent NaN downstream.
     required = [
         (COL_SIGNAL, "Signal"),
         (COL_TRADED_VALUE_1D, "Traded-value (1-day)"),
@@ -223,9 +223,10 @@ def validate_features(data: pandas.DataFrame) -> None:
         print(f"  {label}: '{col}' ({non_null_count:,} non-null)")
 
 
-# ==============================================================================
-# 3. BUILD PIVOT MATRICES  (date × ticker)
-# ==============================================================================
+# -------------------------------------------------------------------
+# MATRIX BUILDING
+# -------------------------------------------------------------------
+
 def build_matrices(
     data: pandas.DataFrame,
 ) -> tuple[
@@ -236,19 +237,10 @@ def build_matrices(
     pandas.DataFrame,
     pandas.DataFrame,
 ]:
-    """
-    Pivot to aligned signal, traded-value, close, raw-close, and volume matrices.
-
-    Parameters
-    ----------
-    data
-        Long-format DataFrame with all tickers concatenated.
-
-    Returns
-    -------
-        Tuple of (signal_df, tv_1d_df, tv_63d_df, close_adj_df,
-        close_raw_df, volume_df), each a date × ticker DataFrame.
-    """
+    # Pivot the long-format data into six aligned date × ticker matrices.
+    # All matrices share the same index (dates) and columns (tickers) so that
+    # row[i] always refers to the same date and col[j] to the same ticker
+    # across all six, enabling fast numpy-level row slicing in the main loop.
     print("  Building matrices …")
 
     pivot_specs = [
@@ -266,6 +258,8 @@ def build_matrices(
             index=COL_DATE, columns=COL_TICKER, values=col, aggfunc="last"
         ).sort_index()
 
+    # Take the union of all dates and tickers so every matrix has the same shape,
+    # filling any gaps with NaN (treated as missing / untradable downstream).
     all_dates = pivots["signal"].index
     all_tickers = pivots["signal"].columns
     for key in pivots:
@@ -290,9 +284,10 @@ def build_matrices(
     )
 
 
-# ==============================================================================
-# 4. SELECTION HELPERS
-# ==============================================================================
+# -------------------------------------------------------------------
+# SELECTION HELPERS
+# -------------------------------------------------------------------
+
 def _select_eligible_stocks(
     sig_row: numpy.ndarray,
     tv_1d_row: numpy.ndarray,
@@ -302,42 +297,13 @@ def _select_eligible_stocks(
     tickers: numpy.ndarray,
     benchmark_tickers: set[str] | None = None,
 ) -> tuple[numpy.ndarray, numpy.ndarray, int]:
-    """
-    Apply selection filters and return the eligible universe for a single day.
-
-    All input rows except close_row come from T-1 (previous close). close_row
-    comes from T and acts only as a tradability guard.
-
-    Selection rules:
-        1. SMA crossover signal == 1.
-        2. Single-day traded value >= MIN_DAILY_TRADED_VALUE ($10 M floor).
-        3. 63-day average traded value is finite and positive (for ranking).
-        4. Adjusted close is finite and positive (tradability guard).
-        5. Not SPY and not in the excluded set.
-        6. If benchmark_tickers is provided, ticker must be in the benchmark (T-1).
-
-    Parameters
-    ----------
-    sig_row
-        T-1 signal array aligned with tickers.
-    tv_1d_row
-        T-1 single-day traded value array (liquidity floor filter).
-    tv_63d_row
-        T-1 63-day average traded value array (ranking and sizing input).
-    close_row
-        T adjusted-close array (tradability guard only).
-    excluded
-        Tickers to unconditionally exclude (delisted or force-removed today).
-    tickers
-        Full ticker array corresponding to all matrix columns.
-    benchmark_tickers
-        Set of tickers that are part of the benchmark on T-1. If None, the
-        benchmark filter is disabled.
-
-    Returns
-    -------
-        Tuple of (eligible_tkrs, eligible_tv_63d, n_eligible).
-    """
+    # Build a boolean mask that keeps only stocks meeting all selection criteria:
+    #   1. SMA 50/200 crossover signal == 1  (bullish trend)
+    #   2. Single-day traded value >= $10 M  (liquidity floor)
+    #   3. 63-day average traded value is finite and positive  (ranking input)
+    #   4. Adjusted close is finite and positive on trade date  (tradability guard)
+    #   5. Not SPY and not in the excluded (delisted / force-removed) set
+    #   6. If a benchmark is loaded, must be in the benchmark on T-1
     eligible_mask = (
         (sig_row == 1)
         & (tv_1d_row >= MIN_DAILY_TRADED_VALUE)
@@ -363,48 +329,22 @@ def _pick_top_n(
     eligible_tkrs: numpy.ndarray,
     eligible_tv_63d: numpy.ndarray,
 ) -> frozenset:
-    """
-    Select the top MAX_POSITIONS tickers by 63-day average traded value.
-
-    Parameters
-    ----------
-    eligible_tkrs
-        Tickers that passed all eligibility filters.
-    eligible_tv_63d
-        Corresponding 63-day average traded values.
-
-    Returns
-    -------
-        Frozenset of selected ticker symbols.
-    """
+    # Rank eligible stocks by 63-day average traded value and keep the top MAX_POSITIONS.
+    # Higher traded value → more liquid → higher rank.
     if len(eligible_tkrs) <= MAX_POSITIONS:
         return frozenset(eligible_tkrs)
     top_idx = numpy.argsort(-eligible_tv_63d)[:MAX_POSITIONS]
     return frozenset(eligible_tkrs[top_idx])
 
 
-# ==============================================================================
-# 5. REGIME HELPERS
-# ==============================================================================
+# -------------------------------------------------------------------
+# REGIME HELPERS
+# -------------------------------------------------------------------
+
 def _determine_regime(n_eligible: int, in_spy_regime: bool) -> bool:
-    """
-    Determine whether the portfolio should be in SPY regime.
-
-    Uses hysteresis to avoid whipsawing at the boundary: the SPY regime is
-    entered when n_eligible < MIN_ELIGIBLE_STOCKS and exited only when
-    n_eligible >= REENTRY_THRESHOLD.
-
-    Parameters
-    ----------
-    n_eligible
-        Number of stocks that passed all selection filters.
-    in_spy_regime
-        Whether the portfolio is currently in SPY regime.
-
-    Returns
-    -------
-        True if the portfolio should be in SPY regime.
-    """
+    # Use hysteresis to avoid whipsawing at the boundary:
+    #   once in SPY regime, stay until n_eligible >= REENTRY_THRESHOLD (higher bar to exit)
+    #   once in stock regime, only enter SPY when n_eligible < MIN_ELIGIBLE_STOCKS
     if in_spy_regime:
         return n_eligible < REENTRY_THRESHOLD
     return n_eligible < MIN_ELIGIBLE_STOCKS
@@ -416,24 +356,10 @@ def _needs_rebalance(
     should_spy: bool,
     in_spy_regime: bool,
 ) -> bool:
-    """
-    Determine whether a rebalance event has been triggered by composition or regime.
-
-    Parameters
-    ----------
-    prev_selected
-        Selected tickers from the previous rebalance. None on the first day.
-    current_selected
-        Selected tickers for the current day.
-    should_spy
-        Whether the portfolio should be in SPY regime today.
-    in_spy_regime
-        Whether the portfolio was in SPY regime on the previous day.
-
-    Returns
-    -------
-        True if a rebalance should occur.
-    """
+    # Trigger a rebalance when:
+    #   - it is the very first day (prev_selected is None)
+    #   - the regime has changed (stock ↔ SPY)
+    #   - the composition of the top-N selection has changed
     if prev_selected is None:
         return True
     if should_spy != in_spy_regime:
@@ -443,24 +369,14 @@ def _needs_rebalance(
     return False
 
 
-# ==============================================================================
-# 6. SIZING HELPERS
-# ==============================================================================
+# -------------------------------------------------------------------
+# SIZING HELPERS
+# -------------------------------------------------------------------
+
 def _cap_and_redistribute(weights: pandas.Series, cap: float) -> pandas.Series:
-    """
-    Iteratively cap weights at `cap` and redistribute excess proportionally.
-
-    Parameters
-    ----------
-    weights
-        Raw portfolio weights (must sum to 1.0).
-    cap
-        Maximum allowed weight per position.
-
-    Returns
-    -------
-        Capped and redistributed weights clipped to cap.
-    """
+    # Iteratively enforce the per-position weight cap.
+    # Any weight exceeding `cap` is trimmed and the excess is redistributed
+    # proportionally to the remaining under-cap positions.
     capped = weights.copy()
     for _ in range(100):
         over = capped > cap
@@ -479,25 +395,9 @@ def _compute_stock_weights(
     eligible_tkrs: numpy.ndarray,
     eligible_tv_63d: numpy.ndarray,
 ) -> pandas.Series:
-    """
-    Size positions for the stock regime.
-
-    Weights are proportional to 63-day average traded value among the top
-    MAX_POSITIONS tickers, then capped at MAX_WEIGHT with iterative
-    redistribution of any excess.
-
-    Parameters
-    ----------
-    eligible_tkrs
-        Tickers that passed all selection filters.
-    eligible_tv_63d
-        Corresponding 63-day average traded values for ranking and sizing.
-
-    Returns
-    -------
-        Portfolio weights indexed by ticker, summing to 1.0.
-        Returns an empty Series if no eligible ticker has positive traded value.
-    """
+    # Size positions proportional to 63-day average traded value
+    # (more liquid stocks get a larger allocation), then apply the MAX_WEIGHT cap
+    # and renormalize so weights sum to 1.0.
     tv_series = pandas.Series(eligible_tv_63d, index=eligible_tkrs)
     tv_positive = tv_series[tv_series > 0].sort_values(ascending=False)
 
@@ -511,58 +411,28 @@ def _compute_stock_weights(
     return normalized[normalized > 1e-10]
 
 
-# ==============================================================================
-# 7. DELISTING / UNTRADABLE DETECTION
-# ==============================================================================
+# -------------------------------------------------------------------
+# DELISTING / UNTRADABLE DETECTION
+# -------------------------------------------------------------------
+
 def detect_untradable_tickers(
     close_adj_df: pandas.DataFrame,
     close_raw_df: pandas.DataFrame,
     volume_df: pandas.DataFrame,
     trading_dates: pandas.DatetimeIndex,
 ) -> tuple[dict[str, pandas.Timestamp], dict[pandas.Timestamp, set[str]]]:
-    """
-    Detect tickers that become untradable during the backtest.
-
-    Health is assessed using three price/volume columns:
-
-    - **Adjusted close** (``m_close_dividend_and_split_adjusted``): a ticker
-      with no valid value on date D is immediately flagged.
-    - **Raw close** (``m_close_split_adjusted``) and **volume**
-      (``m_volume_split_adjusted``): used for trailing-window health.  In the
-      last ``DELIST_LOOKBACK_DAYS`` trading days, if the fraction of days with
-      missing raw close or zero volume >= ``DELIST_MISSING_THRESHOLD``, the
-      ticker is flagged.
-
-    Once flagged the function computes:
-
-    - ``exclude_date`` — first unhealthy date (ticker excluded from this day on).
-    - ``remove_date``  — one trading day before ``exclude_date`` (forced
-      rebalance to sell while a valid price still exists).
-
-    Selling on T-1 is intentional and not look-ahead bias: most delistings,
-    mergers, and suspensions are preceded by a public announcement, giving
-    investors time to exit before the effective date. The residual risk is
-    sudden halts (e.g. fraud-driven delistings) where no announcement window
-    exists — these are rare tail events accepted as a known limitation.
-
-    Parameters
-    ----------
-    close_adj_df
-        Date × ticker matrix of dividend-and-split-adjusted close prices.
-    close_raw_df
-        Date × ticker matrix of split-adjusted (raw) close prices.
-    volume_df
-        Date × ticker matrix of split-adjusted volume.
-    trading_dates
-        Dates within the backtest window.
-
-    Returns
-    -------
-    ticker_exclude_from : dict[str, pandas.Timestamp]
-        Mapping of ticker to the first date it must be excluded.
-    force_remove_on : dict[pandas.Timestamp, set[str]]
-        Mapping of date to tickers that must be force-removed on that date.
-    """
+    # Scan every ticker across the full backtest window and flag those that
+    # become untradable (delisted, suspended, acquired, etc.).
+    #
+    # A ticker is flagged on the first date where either:
+    #   a) its adjusted close is missing / zero, OR
+    #   b) in the trailing DELIST_LOOKBACK_DAYS window, the fraction of days
+    #      with missing raw close or zero volume >= DELIST_MISSING_THRESHOLD.
+    #
+    # Result:
+    #   ticker_exclude_from  — first date the ticker must be excluded from selection
+    #   force_remove_on      — the trading day before that date, when we must sell
+    #                          (last day with a valid price to execute the exit)
     raw_arr = close_raw_df.reindex(index=trading_dates).values
     vol_arr = volume_df.reindex(index=trading_dates).values
     adj_arr = close_adj_df.reindex(index=trading_dates).values
@@ -582,30 +452,33 @@ def detect_untradable_tickers(
         if tkr == SPY_TICKER:
             continue
         if not has_adj[:, col_idx].any():
-            continue
+            continue   # ticker never had valid data in the window — skip entirely
 
         first_bad_idx = None
         for row_idx in range(n_dates):
             if not has_adj[row_idx, col_idx]:
+                # Adjusted close disappeared — immediate flag
                 first_bad_idx = row_idx
                 break
             if row_idx >= DELIST_LOOKBACK_DAYS - 1:
                 window = good_day[row_idx - DELIST_LOOKBACK_DAYS + 1: row_idx + 1, col_idx]
                 missing_frac = 1.0 - window.mean()
                 if missing_frac >= DELIST_MISSING_THRESHOLD:
+                    # Too many bad days in the trailing window — flag as untradable
                     first_bad_idx = row_idx
                     break
 
         if first_bad_idx is None:
-            continue
+            continue   # ticker is healthy throughout — nothing to do
 
         exclude_date = trading_dates[first_bad_idx]
 
         if first_bad_idx == 0:
-            # Bad from the very first day — just exclude, no forced rebalance.
+            # Bad from the very first day in the window — exclude with no prior sell
             ticker_exclude_from[tkr] = exclude_date
             continue
 
+        # Schedule a forced sell on the last healthy day (one day before bad date)
         remove_date = trading_dates[first_bad_idx - 1]
         ticker_exclude_from[tkr] = exclude_date
         force_remove_on.setdefault(remove_date, set()).add(tkr)
@@ -631,9 +504,25 @@ def detect_untradable_tickers(
     return ticker_exclude_from, force_remove_on
 
 
-# ==============================================================================
-# 8. EVENT-DRIVEN PORTFOLIO CONSTRUCTION
-# ==============================================================================
+# -------------------------------------------------------------------
+# NYSE CALENDAR (QuantLib) — used to advance signal dates to trade dates
+# -------------------------------------------------------------------
+
+_NYSE_CALENDAR = ql.UnitedStates(ql.UnitedStates.NYSE)
+
+
+def _next_trading_date(date: pandas.Timestamp) -> pandas.Timestamp:
+    # Return the next NYSE business day after `date`.
+    # Used to convert a signal date (T) into its implementation date (T+1).
+    ql_date = ql.Date(date.day, date.month, date.year)
+    next_ql = _NYSE_CALENDAR.advance(ql_date, 1, ql.Days)
+    return pandas.Timestamp(next_ql.year(), next_ql.month(), next_ql.dayOfMonth())
+
+
+# -------------------------------------------------------------------
+# MAIN LOOP — event-driven portfolio construction
+# -------------------------------------------------------------------
+
 def construct_portfolios(
     signal_df: pandas.DataFrame,
     tv_1d_df: pandas.DataFrame,
@@ -643,44 +532,13 @@ def construct_portfolios(
     volume_df: pandas.DataFrame,
     benchmark_df: pandas.DataFrame | None = None,
 ) -> dict[pandas.Timestamp, pandas.Series]:
-    """
-    Build event-driven portfolios over [PORTFOLIO_START, PORTFOLIO_END].
-
-    Walks every trading day and rebalances when portfolio composition changes,
-    a regime transition occurs, or an untradable ticker must be force-removed.
-    Regime transitions use hysteresis: enter SPY regime when n_eligible <
-    MIN_ELIGIBLE_STOCKS, exit SPY regime when n_eligible >= REENTRY_THRESHOLD.
-    Untradable tickers are detected upfront and force-removed on T-1 (their last
-    healthy day), then permanently excluded from T onward.
-
-    Signal and traded-value rows are taken from T-1 (the previous row in the
-    matrix), so every portfolio decision is based exclusively on data known
-    before day T opens. The adjusted-close row is taken from T itself as a
-    same-day tradability guard. Benchmark membership is also read from T-1.
-
-    Parameters
-    ----------
-    signal_df
-        Date × ticker matrix of SMA crossover signals.
-    tv_1d_df
-        Date × ticker matrix of single-day traded value (liquidity floor).
-    tv_63d_df
-        Date × ticker matrix of 63-day average traded value (ranking / sizing).
-    close_adj_df
-        Date × ticker matrix of dividend-and-split-adjusted close prices.
-    close_raw_df
-        Date × ticker matrix of split-adjusted close prices.
-    volume_df
-        Date × ticker matrix of split-adjusted volume.
-    benchmark_df
-        Date × ticker matrix with non-zero values indicating benchmark membership.
-        When provided, only tickers in the benchmark on T-1 are eligible.
-
-    Returns
-    -------
-        Mapping of rebalance date to portfolio weights indexed by ticker.
-    """
-    date_mask = (signal_df.index >= PORTFOLIO_START) & (signal_df.index <= PORTFOLIO_END)
+    # Walk every trading day T in [PORTFOLIO_START, PORTFOLIO_END + 1 day].
+    # On each day we read T-1 signals and T close prices, then decide whether
+    # to rebalance.  The loop runs one extra day past PORTFOLIO_END so that the
+    # signal at PORTFOLIO_END close is captured and produces an output column
+    # for the next trading day after PORTFOLIO_END.
+    loop_end = _next_trading_date(PORTFOLIO_END)
+    date_mask = (signal_df.index >= PORTFOLIO_START) & (signal_df.index <= loop_end)
     trading_dates = signal_df.index[date_mask]
     if trading_dates.empty:
         raise RuntimeError(
@@ -693,11 +551,13 @@ def construct_portfolios(
     print(f"  SPY exit:     n_eligible >= {REENTRY_THRESHOLD}")
     print(f"  Benchmark filter: {'enabled' if benchmark_df is not None else 'disabled'}")
 
+    # Pre-compute the full list of untradable tickers and the dates on which
+    # they must be force-sold, so the main loop can handle them efficiently.
     ticker_exclude_from, force_remove_on = detect_untradable_tickers(
         close_adj_df, close_raw_df, volume_df, trading_dates
     )
 
-    # Convert to numpy arrays for performance; date_idx maps dates to row positions.
+    # Convert DataFrames to numpy arrays for fast row-level access inside the loop
     sig_arr = signal_df.values
     tv_1d_arr = tv_1d_df.values
     tv_63d_arr = tv_63d_df.values
@@ -705,7 +565,7 @@ def construct_portfolios(
     tickers = signal_df.columns.values
     date_idx = {trade_date: pos for pos, trade_date in enumerate(signal_df.index)}
 
-    # Pre-align benchmark to the signal matrix dates/tickers for fast row lookup.
+    # Pre-align the benchmark matrix to the same index/columns as signal_df
     benchmark_arr: numpy.ndarray | None = None
     benchmark_date_idx: dict[pandas.Timestamp, int] | None = None
     if benchmark_df is not None:
@@ -724,67 +584,75 @@ def construct_portfolios(
         row_pos = date_idx[trade_date]
 
         if row_pos == 0:
-            # No prior row available; defer rebalance to next trading day.
+            # No prior row available on the very first data date — skip
             prev_selected = frozenset()
             continue
 
-        # --- Timing: resolve which data rows to read ---
-        sig_row = sig_arr[row_pos - 1]          # T-1 close signal
-        tv_1d_row = tv_1d_arr[row_pos - 1]      # T-1 close (liquidity floor filter)
-        tv_63d_row = tv_63d_arr[row_pos - 1]    # T-1 close (ranking and sizing)
-        close_row = close_arr[row_pos]           # T close (tradability guard)
+        # Read T-1 signals and liquidity data (decisions based on yesterday's close)
+        sig_row = sig_arr[row_pos - 1]
+        tv_1d_row = tv_1d_arr[row_pos - 1]
+        tv_63d_row = tv_63d_arr[row_pos - 1]
+        close_row = close_arr[row_pos]   # T close — used only as a tradability guard
 
+        # Collect tickers scheduled for forced removal today (last healthy day before delisting)
         force_removing_today = force_remove_on.get(trade_date, set())
 
+        # Build the full exclusion set: force-removes today + permanently excluded from before
         excluded: set[str] = set(force_removing_today)
         for tkr, exc_date in ticker_exclude_from.items():
             if trade_date >= exc_date:
                 excluded.add(tkr)
 
-        # --- Benchmark: resolve T-1 benchmark membership set ---
+        # Resolve T-1 benchmark membership (which tickers the benchmark held yesterday)
         benchmark_tickers: set[str] | None = None
         if benchmark_arr is not None and benchmark_date_idx is not None:
-            bm_row = benchmark_arr[row_pos - 1]   # T-1 benchmark holdings
+            bm_row = benchmark_arr[row_pos - 1]
             benchmark_tickers = set(tickers[bm_row != 0])
 
-        # --- Selection: filter eligible universe and pick top-N ---
+        # Apply all selection filters and rank by 63-day traded value
         eligible_tkrs, eligible_tv_63d, n_eligible = _select_eligible_stocks(
             sig_row, tv_1d_row, tv_63d_row, close_row, excluded, tickers,
             benchmark_tickers=benchmark_tickers,
         )
         current_selected = _pick_top_n(eligible_tkrs, eligible_tv_63d)
 
-        # --- Regime: determine SPY vs stock (with hysteresis) ---
+        # Determine whether to be in SPY regime or stock-picking regime
         should_spy = _determine_regime(n_eligible, in_spy_regime)
         if should_spy:
-            current_selected = frozenset()
+            current_selected = frozenset()  # no stocks selected in SPY regime
 
-        # --- Timing: check composition / regime rebalance triggers ---
+        # Check if anything has changed since the last rebalance
         need_rebalance = _needs_rebalance(
             prev_selected, current_selected, should_spy, in_spy_regime
         )
 
+        # Also force a rebalance if a currently held ticker needs to be sold today
         if force_removing_today and not need_rebalance and prev_weights is not None:
             held_tickers = set(prev_weights.index)
             if force_removing_today & held_tickers:
                 need_rebalance = True
                 n_delisting_rebals += 1
 
-        # --- Sizing: compute new weights on rebalance dates ---
+        # Compute and record the new portfolio weights on rebalance dates
         if need_rebalance:
             if should_spy:
+                # SPY regime: 100 % allocation to SPY
                 weights = pandas.Series({SPY_TICKER: 1.0})
                 if not in_spy_regime:
                     spy_entries += 1
             else:
+                # Stock regime: liquidity-weighted, capped at MAX_WEIGHT per position
                 weights = _compute_stock_weights(eligible_tkrs, eligible_tv_63d)
                 if weights.empty:
+                    # No eligible stocks with positive traded value — fall back to SPY
                     weights = pandas.Series({SPY_TICKER: 1.0})
                     should_spy = True
                     if not in_spy_regime:
                         spy_entries += 1
 
-            portfolios[trade_date] = weights
+            # Key by signal date (T-1): after T+1 shift, output column = trade_date.
+            signal_date = signal_df.index[row_pos - 1]
+            portfolios[signal_date] = weights
             prev_weights = weights
 
         prev_selected = current_selected
@@ -797,26 +665,35 @@ def construct_portfolios(
     return portfolios
 
 
-# ==============================================================================
-# 9. BUILD OUTPUT DATAFRAME
-# ==============================================================================
+# -------------------------------------------------------------------
+# DATE SHIFTING — signal date → implementation date
+# -------------------------------------------------------------------
+
+def shift_to_implementation_dates(
+    portfolios: dict[pandas.Timestamp, pandas.Series],
+) -> dict[pandas.Timestamp, pandas.Series]:
+    # Portfolios are keyed by the signal date (T-1 close).
+    # Advance each key by one NYSE trading day to get the implementation date T,
+    # i.e. the first day the portfolio can actually be traded.
+    # Example: signal at close of Friday 2026-04-17 → implement Monday 2026-04-20.
+    result: dict[pandas.Timestamp, pandas.Series] = {}
+    for signal_date, weights in portfolios.items():
+        impl_date = _next_trading_date(signal_date)
+        result[impl_date] = weights
+    return result
+
+
+# -------------------------------------------------------------------
+# OUTPUT BUILDING
+# -------------------------------------------------------------------
+
 def build_output(
     portfolios: dict[pandas.Timestamp, pandas.Series],
 ) -> pandas.DataFrame:
-    """
-    Build the output DataFrame with tickers as rows and rebalance dates as columns.
-
-    Parameters
-    ----------
-    portfolios
-        Mapping of rebalance date to portfolio weights indexed by ticker.
-
-    Returns
-    -------
-        Rows are tickers (alphabetical), columns are rebalance dates as
-        YYYY-MM-DD strings, values are weights rounded to 9 decimals.
-        Always includes the SPY row and a leading Ticker index column.
-    """
+    # Reshape the portfolios dict into a tickers × dates matrix.
+    # Rows = tickers (alphabetical), columns = rebalance dates (YYYY-MM-DD strings),
+    # values = portfolio weights rounded to 9 decimal places.
+    # Dates with no rebalance are omitted; SPY row is always present.
     all_tickers = sorted({tkr for weights in portfolios.values() for tkr in weights.index})
     sorted_dates = sorted(portfolios.keys())
     date_cols = [trade_date.strftime("%Y-%m-%d") for trade_date in sorted_dates]
@@ -839,16 +716,16 @@ def build_output(
     return matrix.reset_index()
 
 
-# ==============================================================================
-# 10. SUMMARY
-# ==============================================================================
+# -------------------------------------------------------------------
+# DIAGNOSTICS
+# -------------------------------------------------------------------
+
 def print_summary(
     portfolios: dict[pandas.Timestamp, pandas.Series],
     output_df: pandas.DataFrame,
     loaded: list[str],
     missing: list[str],
 ) -> None:
-    """Print strategy diagnostics."""
     spy_only = [
         weights for weights in portfolios.values()
         if SPY_TICKER in weights.index and abs(weights[SPY_TICKER] - 1.0) < 1e-6
@@ -916,11 +793,10 @@ def print_summary(
     print("\n" + "=" * 70)
 
 
-# ==============================================================================
-# 11. MAIN
-# ==============================================================================
+# -------------------------------------------------------------------
+# ENTRY POINT
+# -------------------------------------------------------------------
 
-"""Run the full portfolio construction pipeline and write outputs to OUTPUT_DIR."""
 print("=" * 70)
 print("  LIQUIDITY-WEIGHTED TREND STRATEGY — Portfolio Construction")
 print(f"  Period: {PORTFOLIO_START.date()} → {PORTFOLIO_END.date()}")
@@ -946,7 +822,10 @@ portfolios = construct_portfolios(
     benchmark_df=benchmark_df,
 )
 
-print("\n[6] Building output …")
+print("\n[6] Shifting to implementation dates …")
+portfolios = shift_to_implementation_dates(portfolios)
+
+print("\n[7] Building output …")
 output_df = build_output(portfolios)
 
 out_path = OUTPUT_DIR / "portfolio_weights.csv"
