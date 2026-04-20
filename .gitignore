@@ -167,10 +167,10 @@ cython_debug/
 
 # Customizations
 *.csv
-!Investment_Strategy_Example/Benchmark_Portfolios/benchmark_portfolio_holdings.csv
-!Investment_Strategy_Example/Data_Curator/KN_US_Equity_Benchmark.csv
 *.idea
 *.parquet
+!Investment_Strategy_Example/Benchmark_Portfolios/benchmark_portfolio_holdings.csv
+!Investment_Strategy_Example/Benchmark_Portfolios/KN_US_Equity_Benchmark.csv
 
 # Investment Strategy Example — generated output directories
 Investment_Strategy_Example/Backtest_Engine/*
