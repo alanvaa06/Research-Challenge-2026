@@ -14,25 +14,25 @@ Selection
     The top MAX_POSITIONS stocks are then selected by 63-day average traded
     value (c_daily_traded_value_63d), descending.
 
-Sizing
-    Weights are proportional to 63-day average traded value among the selected
-    stocks, then capped at MAX_WEIGHT (20 %) per position, with the excess
-    redistributed proportionally until all weights are within the cap.
-
 Market-regime handling
     When fewer than MIN_ELIGIBLE_STOCKS (20) stocks pass the filters, the
     portfolio switches to 100 % SPY (bear-market / low-signal regime). It
     exits back to stocks only when eligible stocks >= REENTRY_THRESHOLD (25),
     providing hysteresis to avoid excessive whipsawing at the boundary.
 
-Rebalance triggers
+Sizing
+    Weights are proportional to 63-day average traded value among the selected
+    stocks, then capped at MAX_WEIGHT (20 %) per position, with the excess
+    redistributed proportionally until all weights are within the cap.
+
+Timing
     A new portfolio is recorded whenever:
       - the set of selected top-N stocks changes;
       - the portfolio transitions into or out of the SPY regime;
       - a currently held stock must be force-sold due to delisting / becoming
         untradable (sold on T-1, the last healthy day before data disappears).
 
-Timing
+Portfolio construction
     All selection inputs (signal, traded value, benchmark membership) are read
     from T-1 close so that no future information is used. The adjusted close is
     read from T only as a tradability guard. Each rebalance is recorded under
