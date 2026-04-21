@@ -86,6 +86,19 @@ COL_CLOSE = "m_close_dividend_and_split_adjusted" # adjusted close (tradability 
 COL_CLOSE_RAW = "m_close_split_adjusted"          # split-adjusted close (delisting detection)
 COL_VOLUME = "m_volume_split_adjusted"            # split-adjusted volume (delisting detection)
 
+# Only these columns are needed from each CSV. Passing this list to
+# `read_csv(usecols=...)` avoids loading the ~200 unused columns per ticker
+# and keeps peak memory proportional to what the strategy actually consumes.
+FEATURE_COLUMNS: list[tuple[str, str]] = [
+    (COL_SIGNAL, "Signal"),
+    (COL_TRADED_VALUE_1D, "Traded-value (1-day)"),
+    (COL_TRADED_VALUE_63D, "Traded-value (63-day)"),
+    (COL_CLOSE, "Close price (adjusted)"),
+    (COL_CLOSE_RAW, "Close price (raw)"),
+    (COL_VOLUME, "Volume"),
+]
+REQUIRED_LOAD_COLUMNS: list[str] = [COL_DATE] + [col for col, _ in FEATURE_COLUMNS]
+
 # Delisting / untradable detection: flag a ticker when more than
 # DELIST_MISSING_THRESHOLD of the last DELIST_LOOKBACK_DAYS days
 # have missing raw close or zero volume.
@@ -145,10 +158,18 @@ def load_benchmark_holdings() -> pandas.DataFrame | None:
         return None
 
 
-def load_data() -> tuple[pandas.DataFrame, list[str], list[str]]:
-    # Scan DATA_DIR for per-ticker CSVs produced by the Data Curator, then
-    # load only the tickers listed in the config (or all CSVs if no config).
-    # Returns a single long-format DataFrame plus lists of loaded / missing tickers.
+def load_data() -> tuple[dict[str, pandas.DataFrame], list[str], list[str]]:
+    # Scan DATA_DIR for per-ticker CSVs produced by the Data Curator, then load
+    # only the tickers listed in the config (or all CSVs if no config).  Only
+    # the columns in REQUIRED_LOAD_COLUMNS are read — the raw CSVs carry ~200
+    # fields, and loading them all would balloon peak memory during matrix
+    # assembly even though the strategy only consumes six.
+    #
+    # Returns a dict {ticker: DataFrame indexed by date, columns = features}
+    # plus the lists of loaded / missing tickers.  The dict form lets
+    # build_matrices() assemble each feature matrix directly via one pandas
+    # concat per feature, skipping the long-format concat + pivot_table
+    # roundtrip used previously.
     csv_paths = {csv_file.stem: csv_file for csv_file in sorted(DATA_DIR.glob("*.csv"))}
     print(f"  CSV files found: {len(csv_paths)}")
 
@@ -164,60 +185,76 @@ def load_data() -> tuple[pandas.DataFrame, list[str], list[str]]:
         tickers_to_load = list(csv_paths.keys())
         missing = []
 
-    frames: list[pandas.DataFrame] = []
+    ticker_frames: dict[str, pandas.DataFrame] = {}
     loaded: list[str] = []
+    total_rows = 0
+    min_date: pandas.Timestamp | None = None
+    max_date: pandas.Timestamp | None = None
+
     for load_idx, tkr in enumerate(sorted(tickers_to_load)):
         try:
-            frame = pandas.read_csv(csv_paths[tkr], low_memory=False)
+            frame = pandas.read_csv(
+                csv_paths[tkr],
+                usecols=REQUIRED_LOAD_COLUMNS,
+                low_memory=False,
+            )
             if load_idx == 0:
-                print(f"  Sample: {tkr}.csv | Cols: {len(frame.columns)} | Rows: {len(frame)}")
-            frame[COL_TICKER] = tkr
-            frames.append(frame)
+                print(
+                    f"  Sample: {tkr}.csv | Cols: {len(frame.columns)} "
+                    f"(of required {len(REQUIRED_LOAD_COLUMNS)}) | Rows: {len(frame)}"
+                )
+            frame[COL_DATE] = pandas.to_datetime(
+                frame[COL_DATE], format="mixed", dayfirst=False
+            )
+            frame = frame.set_index(COL_DATE).sort_index()
+
+            # Preserve the pivot_table(aggfunc="last") dedup semantics of the
+            # original implementation — CSVs shouldn't have duplicate dates,
+            # but guard against it explicitly to keep behavior identical.
+            if frame.index.has_duplicates:
+                frame = frame.groupby(level=0).last()
+
+            ticker_frames[tkr] = frame
             loaded.append(tkr)
+
+            total_rows += len(frame)
+            if not frame.empty:
+                frame_min = frame.index.min()
+                frame_max = frame.index.max()
+                min_date = frame_min if min_date is None else min(min_date, frame_min)
+                max_date = frame_max if max_date is None else max(max_date, frame_max)
         except Exception as exc:
             print(f"  ERROR {tkr}.csv: {exc}")
             missing.append(tkr)
 
-    if not frames:
+    if not ticker_frames:
         raise RuntimeError("No data loaded.")
 
-    data = pandas.concat(frames, ignore_index=True)
-
-    # Tolerate minor date-column name variations from different Data Curator versions
-    if COL_DATE not in data.columns:
-        for col in data.columns:
-            if "date" in col.lower():
-                data.rename(columns={col: COL_DATE}, inplace=True)
-                break
-
-    data[COL_DATE] = pandas.to_datetime(data[COL_DATE], format="mixed", dayfirst=False)
-    data.sort_values([COL_DATE, COL_TICKER], inplace=True)
-    data.reset_index(drop=True, inplace=True)
-
     print(f"  Loaded: {len(loaded)} tickers | Missing: {len(missing)}")
-    print(f"  Total rows: {len(data):,}")
-    print(f"  Date range: {data[COL_DATE].min().date()} → {data[COL_DATE].max().date()}")
+    print(f"  Total rows: {total_rows:,}")
+    if min_date is not None and max_date is not None:
+        print(f"  Date range: {min_date.date()} → {max_date.date()}")
 
-    return data, loaded, missing
+    return ticker_frames, loaded, missing
 
 
-def validate_features(data: pandas.DataFrame) -> None:
+def validate_features(ticker_frames: dict[str, pandas.DataFrame]) -> None:
     # Abort early if any required signal or price column is absent or all-null,
     # so the error is clear rather than surfacing as a silent NaN downstream.
-    required = [
-        (COL_SIGNAL, "Signal"),
-        (COL_TRADED_VALUE_1D, "Traded-value (1-day)"),
-        (COL_TRADED_VALUE_63D, "Traded-value (63-day)"),
-        (COL_CLOSE, "Close price (adjusted)"),
-        (COL_CLOSE_RAW, "Close price (raw)"),
-        (COL_VOLUME, "Volume"),
-    ]
-    for col, label in required:
-        if col not in data.columns:
+    # Operates on the per-ticker frames produced by load_data() so no
+    # long-format concat is needed just to count non-nulls.
+    if not ticker_frames:
+        raise ValueError("No ticker data provided to validate.")
+
+    sample_columns = next(iter(ticker_frames.values())).columns
+    for col, label in FEATURE_COLUMNS:
+        if col not in sample_columns:
             raise ValueError(
-                f"{label} column '{col}' not found.  Available: {sorted(data.columns)}"
+                f"{label} column '{col}' not found.  Available: {sorted(sample_columns)}"
             )
-        non_null_count = data[col].notna().sum()
+        non_null_count = sum(
+            int(frame[col].notna().sum()) for frame in ticker_frames.values()
+        )
         if non_null_count == 0:
             raise ValueError(f"{label} column '{col}' has no valid data.")
         print(f"  {label}: '{col}' ({non_null_count:,} non-null)")
@@ -228,7 +265,7 @@ def validate_features(data: pandas.DataFrame) -> None:
 # -------------------------------------------------------------------
 
 def build_matrices(
-    data: pandas.DataFrame,
+    ticker_frames: dict[str, pandas.DataFrame],
 ) -> tuple[
     pandas.DataFrame,
     pandas.DataFrame,
@@ -237,10 +274,15 @@ def build_matrices(
     pandas.DataFrame,
     pandas.DataFrame,
 ]:
-    # Pivot the long-format data into six aligned date × ticker matrices.
-    # All matrices share the same index (dates) and columns (tickers) so that
-    # row[i] always refers to the same date and col[j] to the same ticker
-    # across all six, enabling fast numpy-level row slicing in the main loop.
+    # Assemble six aligned date × ticker matrices, one per feature.
+    #
+    # Each ticker's frame is already indexed by date and has exactly the six
+    # feature columns loaded, so a per-feature `pandas.concat(dict, axis=1)`
+    # with `join='outer'` produces the date × ticker matrix directly and
+    # avoids the memory blow-up of `pd.concat(long_frames)` followed by
+    # `pivot_table`.  All six matrices end up sharing the same (sorted) index
+    # and columns so row[i]/col[j] stay aligned across them — required by the
+    # numpy-level row slicing in construct_portfolios().
     print("  Building matrices …")
 
     pivot_specs = [
@@ -252,22 +294,20 @@ def build_matrices(
         (COL_VOLUME, "volume"),
     ]
 
+    sorted_tickers = sorted(ticker_frames.keys())
     pivots: dict[str, pandas.DataFrame] = {}
     for col, key in pivot_specs:
-        pivots[key] = data.pivot_table(
-            index=COL_DATE, columns=COL_TICKER, values=col, aggfunc="last"
+        pivots[key] = pandas.concat(
+            {tkr: ticker_frames[tkr][col] for tkr in sorted_tickers},
+            axis=1,
         ).sort_index()
 
-    # Take the union of all dates and tickers so every matrix has the same shape,
-    # filling any gaps with NaN (treated as missing / untradable downstream).
-    all_dates = pivots["signal"].index
-    all_tickers = pivots["signal"].columns
-    for key in pivots:
-        all_dates = all_dates.union(pivots[key].index)
-        all_tickers = all_tickers.union(pivots[key].columns)
-    all_dates = all_dates.sort_values()
-    all_tickers = all_tickers.sort_values()
-
+    # All six matrices are built from the same ticker_frames dict so they
+    # already share an identical index (union of ticker dates) and columns
+    # (sorted tickers).  Normalise the axes once for safety and to match the
+    # sorted ordering guaranteed by the original implementation.
+    all_dates = pivots["signal"].index.sort_values()
+    all_tickers = pivots["signal"].columns.sort_values()
     for key in pivots:
         pivots[key] = pivots[key].reindex(index=all_dates, columns=all_tickers)
 
@@ -805,13 +845,17 @@ print("=" * 70)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 print("\n[1] Loading data …")
-data, loaded, missing = load_data()
+ticker_frames, loaded, missing = load_data()
 
 print("\n[2] Validating features …")
-validate_features(data)
+validate_features(ticker_frames)
 
 print("\n[3] Building matrices …")
-signal_df, tv_1d_df, tv_63d_df, close_adj_df, close_raw_df, volume_df = build_matrices(data)
+signal_df, tv_1d_df, tv_63d_df, close_adj_df, close_raw_df, volume_df = build_matrices(
+    ticker_frames
+)
+# Release per-ticker frames now that the six aligned matrices own the data.
+del ticker_frames
 
 print("\n[4] Loading benchmark holdings …")
 benchmark_df = load_benchmark_holdings()
