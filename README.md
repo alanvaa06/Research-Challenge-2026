@@ -73,6 +73,8 @@ LSEG Workspace + KN Data Curator: https://youtu.be/6Au0RWgojpE
 
 S03 Portfolio Construction & Strategy Modeling: https://youtu.be/S5bPxSiq4II
 
+S04 Backtesting & Attribution Analysis: https://www.youtube.com/watch?v=Dj52GpLamqg
+
 # Event Details
 
 By registering individually, you will receive all event information and payment instructions directly to your email.
