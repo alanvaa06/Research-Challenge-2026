@@ -147,7 +147,7 @@ Source framework: WOK Audit Framework (Dan the Quant). Philosophical lineage cit
 - **0** — backtest spans regimes but the user has not interrogated which regime the future resembles.
 - **-1** — single-regime overfit, recency anchored, false analogues, structural breaks invisible.
 
-*Lineage:* Bergson, Tulving.
+*Lineage:* Bergson, Tulving, Schacter.
 
 ---
 
@@ -169,7 +169,7 @@ Source framework: WOK Audit Framework (Dan the Quant). Philosophical lineage cit
 **L3 — Stress**
 - Construct an LTCM-style stress: simultaneous correlation regime shift across three asset classes you implicitly depend on. Does the strategy survive?
 - For each scenario, write a falsifiable prediction: "if X occurs, the strategy loses Y." Now ask whether X is observable in real time.
-- Are any of your "tail scenarios" actually plausible mechanically, or are they novel-sounding hallucinations? Each must be grounded in a historical analogue, a mechanism, *and* a falsifiable prediction.
+- Pick the tail scenario you are most confident in. Show the historical analogue, the mechanism, and the falsifier — one line each. If any line is empty, the scenario is decoration, not imagination.
 
 **Failure modes:** Anchoring exclusively to historical distributions, treating tail risk as synonymous with historical worst-case, LTCM-style blindness to correlated failure modes, novel-sounding scenarios with no mechanism.
 
@@ -276,7 +276,7 @@ Source framework: WOK Audit Framework (Dan the Quant). Philosophical lineage cit
 
 **Discipline calibration:**
 - **+1** — falsification threshold pre-committed, kill switch observable in real time, sizing proportionate to epistemic quality.
-- **0** — thesis held conditionally but the conditions are vague.
+- **0** — falsification threshold stated but not pre-committed in writing; kill switch acknowledged but not observable in real time.
 - **-1** — sunk-cost conviction, ideological attachment beyond empirical support, sizing decoupled from epistemic quality.
 
 *Lineage:* William James, Plantinga, Tillich.
