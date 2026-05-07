@@ -14,6 +14,8 @@ Each section follows the same shape:
 
 Source framework: WOK Audit Framework (Dan the Quant). Philosophical lineage cited per WOK at the end of each section — operational, not pedagogical.
 
+**Light-touch protocol:** When a WOK is not among the 3–4 triaged in Phase 2, pull **only the first L1 bullet** from its section. That single question confirms the lens is being deployed at all without burning a turn budget that belongs to the deep-walked WOKs.
+
 ---
 
 ### 1. Reason
@@ -89,9 +91,10 @@ Source framework: WOK Audit Framework (Dan the Quant). Philosophical lineage cit
 **L1 — Frame**
 - State the thesis in one sentence with no hedge words.
 - State the *falsification condition*: under what specific observation would you abandon it?
-- Define every term in that sentence — "value", "quality", "outperform" — what do they mean operationally?
+- Is the thesis stated as a claim with a prediction, or only as a description of how the world works?
 
 **L2 — Probe**
+- Define every load-bearing term — "value", "quality", "outperform" — what do they mean operationally? Pin each to a measurable.
 - Could a sharp critic identify a specific prediction that, if wrong, overturns the thesis? Or are the predictions spongy enough to absorb any outcome?
 - Where does the language perform certainty without substance — "we believe", "robust", "alpha-generative"? Translate each into a measurable claim.
 - Distinguish in your own words: what is *known*, what is *assumed*, what is *speculated*. Are the hedges proportionate to the actual uncertainty?
