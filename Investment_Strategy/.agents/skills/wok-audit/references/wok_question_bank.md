@@ -148,3 +148,135 @@ Source framework: WOK Audit Framework (Dan the Quant). Philosophical lineage cit
 - **-1** — single-regime overfit, recency anchored, false analogues, structural breaks invisible.
 
 *Lineage:* Bergson, Tulving.
+
+---
+
+### 5. Imagination
+
+**Core question:** Are tail risks and non-historical scenarios considered?
+
+**L1 — Frame**
+- Name a scenario that has *never* occurred in the historical sample but is plausible mechanically.
+- What is the strategy's failure mode in that scenario — slow bleed, sudden crash, both?
+- Is there a "this time is different" case the thesis is robust to?
+
+**L2 — Probe**
+- For each tail scenario you name, what is the mechanism — does it follow from a structural change, a correlation breakdown, a liquidity collapse, a policy shock?
+- Are second- and third-order consequences considered? If your top names go to zero overnight, what does that do to the rest of the book?
+- Are correlation-breakdown scenarios modeled, or are correlations assumed stable?
+- Is tail risk being treated as synonymous with "historical worst case"? That is anchoring, not imagination.
+
+**L3 — Stress**
+- Construct an LTCM-style stress: simultaneous correlation regime shift across three asset classes you implicitly depend on. Does the strategy survive?
+- For each scenario, write a falsifiable prediction: "if X occurs, the strategy loses Y." Now ask whether X is observable in real time.
+- Are any of your "tail scenarios" actually plausible mechanically, or are they novel-sounding hallucinations? Each must be grounded in a historical analogue, a mechanism, *and* a falsifiable prediction.
+
+**Failure modes:** Anchoring exclusively to historical distributions, treating tail risk as synonymous with historical worst-case, LTCM-style blindness to correlated failure modes, novel-sounding scenarios with no mechanism.
+
+**AI-Specific Risk:** AI generates scenarios readily, but novel-sounding scenarios may be hallucinations. Every AI-generated scenario should be grounded in a historical analogue, a mechanism, and a falsifiable prediction. Ask: where is the analogue, the mechanism, the falsifier — for each scenario the AI proposed?
+
+**Discipline calibration:**
+- **+1** — non-historical scenarios named with mechanism and falsifier, second-order effects traced, correlation-breakdown modeled.
+- **0** — scenarios listed but mechanisms vague; correlations assumed stable.
+- **-1** — tail risk equated to historical worst case, AI-hallucinated scenarios with no mechanism, second-order effects ignored.
+
+*Lineage:* Kant, Bachelard, Sartre.
+
+---
+
+### 6. Emotion
+
+**Core question:** Is sentiment or conviction treated as signal or noise?
+
+**L1 — Frame**
+- Where does sentiment, positioning, or crowding enter the thesis — as input, as risk, or not at all?
+- How is your *own* conviction in this thesis being examined for bias?
+- Is there a rule for when sentiment becomes a buy or sell trigger?
+
+**L2 — Probe**
+- Is collective sentiment identified as a *variable* (with a measurement and a threshold), or treated narratively?
+- How would you distinguish a genuine contrarian signal from premature positioning that just looks contrarian?
+- Have you addressed crowding risk? At a given AUM, how many other funds are in the same names with the same logic?
+- Are there documented moments when *your* enthusiasm influenced a parameter choice or a hold-through-drawdown decision?
+
+**L3 — Stress**
+- If a crowding-collapse event hits the most consensus names tomorrow (Aug 2007 quant quake style), is your strategy on the right or wrong side of the unwind?
+- Walk through your last three "high conviction" moments. What did you do, what was the outcome, and how would you re-score the conviction now?
+- If you removed every emotionally-loaded word from the memo ("compelling", "powerful", "robust"), what is left? Is the thesis weaker or just less performed?
+
+**Failure modes:** Dismissing sentiment data as "soft," ignoring crowding risk, mistaking enthusiasm for edge, holding through drawdown due to emotional attachment rather than thesis integrity.
+
+**AI-Specific Risk:** AI has no emotional stake in the outcome — which sounds like an advantage until you realize it also has no alarm system. It will not feel that something is wrong. Ask: where in this thesis would a seasoned PM's gut tighten — and did the AI flag it?
+
+**Discipline calibration:**
+- **+1** — sentiment as a measurable variable, own-conviction examined, crowding risk addressed with threshold.
+- **0** — sentiment acknowledged narratively; own-conviction unexamined.
+- **-1** — sentiment dismissed as soft, enthusiasm doing the work of evidence, crowding risk invisible.
+
+*Lineage:* William James, Damasio, Feldman Barrett.
+
+---
+
+### 7. Intuition
+
+**Core question:** Is expert pattern recognition acknowledged and examined?
+
+**L1 — Frame**
+- Where does practitioner judgment or pattern recognition enter the thesis — universe selection, signal design, override rules?
+- Is the intuition based on documented prior experience, or undifferentiated gut feel?
+- Has the intuition been stress-tested against an explicit rule?
+
+**L2 — Probe**
+- For every intuitive call in the thesis, can you point to a prior case where the same pattern produced the same outcome? How many cases? What was the hit rate?
+- Is the intuition a real pattern or a label you put on a hunch after the fact?
+- Have past intuitive calls been logged with date, decision, outcome? If not, the feedback loop is broken.
+- How is intuition distinguished from motivated reasoning — the wish dressed up as a pattern?
+
+**L3 — Stress**
+- Take the strongest intuitive override in the thesis. What is the explicit rule it bypasses, and why is the override more reliable than the rule on the historical evidence?
+- If a junior analyst applied the same intuition without your experience, would they reach the same conclusion? If yes, it is a rule, not intuition. If no, what specifically are *you* perceiving?
+- For your top three intuitive calls of the past year — score each as right, wrong, or uncertain in retrospect. Is the hit rate above the rule-based baseline?
+
+**Failure modes:** Passing off unexamined bias as expert pattern recognition, dismissing intuition entirely, overconfident intuition with no feedback calibration, confusing pattern recognition with confirmation bias.
+
+**AI-Specific Risk:** AI produces outputs that *feel* intuitive to the reader. That feeling is the reader's own intuition being triggered by the AI's fluency — it is not the AI having intuition. Ask: when the AI gave you a "this looks like" answer, did you mistake its pattern-match for your own gut?
+
+**Discipline calibration:**
+- **+1** — intuitions named, prior cases cited with hit rate, feedback loop intact, distinguished from bias.
+- **0** — intuition used but not examined; no documented track record.
+- **-1** — gut feel labeled as pattern recognition, no feedback loop, motivated reasoning dressed as intuition.
+
+*Lineage:* Bergson, Klein, Gigerenzer.
+
+---
+
+### 8. Faith
+
+**Core question:** Is sustained conviction through disconfirmation defensible?
+
+**L1 — Frame**
+- What is the falsification threshold — at what point does the thesis fail and you exit?
+- If the strategy enters a 20% drawdown tomorrow, is the holding period justified by the thesis logic or by hope?
+- Is your position size proportionate to the *epistemic quality* of the thesis (the aggregate WOK score), or to the comfort of the conviction?
+
+**L2 — Probe**
+- Distinguish: when does sustained conviction reflect thesis integrity, and when does it reflect sunk cost?
+- Has the thesis been stress-tested against the *specific* historical conditions under which strategies of this type have failed?
+- If you imagine the thesis is wrong — fully wrong — what is the earliest signal that would tell you, and is it observable in real time?
+- What is the kill switch — drawdown trigger, regime indicator, rolling-Sharpe threshold — and is it pre-committed in writing?
+
+**L3 — Stress**
+- Walk through a hypothetical 18-month period in which every individual signal degrades by 30% but no single one breaks the kill switch. Are you still in the trade? Why or why not?
+- Is the conviction ideologically loaded — value, momentum, low-vol as identity — beyond the empirical support?
+- If a peer with no skin in the game scored this thesis at +0.30 (adequate-with-gaps), would you reduce sizing? If not, what does that tell you about how the conviction is being held?
+
+**Failure modes:** Holding through legitimate disconfirmation, abandoning sound thesis at first drawdown, ideological attachment to a factor or framework beyond its empirical support, sunk-cost masquerading as conviction.
+
+**AI-Specific Risk:** AI has no convictions. But it will enthusiastically reinforce yours if asked to defend a thesis — and will do so with equal fluency whether the thesis is right or wrong. Ask: if you ask the AI to *attack* the thesis with the same vigor, does the attack hold up?
+
+**Discipline calibration:**
+- **+1** — falsification threshold pre-committed, kill switch observable in real time, sizing proportionate to epistemic quality.
+- **0** — thesis held conditionally but the conditions are vague.
+- **-1** — sunk-cost conviction, ideological attachment beyond empirical support, sizing decoupled from epistemic quality.
+
+*Lineage:* William James, Plantinga, Tillich.
