@@ -136,13 +136,15 @@ End with this written summary the user can paste into `docs/context/memory.md` o
 
 **Aggregate:** [sum]/8 = [score]  →  Band: [exceptional / solid / adequate-with-gaps / compromised / deeply problematic]
 
-## Top 3 lenses pulling the score down
+## Top lenses pulling the score down (up to 3)
+List in priority order. If fewer than three lenses are pulling the score down, list only those. If none, write "No material lenses pulling the score down."
 1. **[WOK]** — [failure mode triggered, why it matters, the specific question the user could not answer cleanly].
 2. ...
 3. ...
 
 ## AI-specific risks present (if any)
 - [Per WOK whose AI-Specific Risk applies — fluency-as-precision (Language), no episodic memory (Memory), no alarm system (Emotion), conviction without basis (Faith), etc.]
+- If none identified, write: "None identified in this audit."
 
 ## Suggested next moves (prioritized)
 1. [Concrete, checkable action that would raise the lowest WOK by one notch.]
@@ -169,8 +171,8 @@ The synthesis is the deliverable. Make it concrete enough that the team lead rea
 Stop probing and synthesize when any of these are true:
 
 - The user has clean answers to every triaged WOK and the light-touch lenses have been covered.
-- The user is repeating themselves on a question — push it into the synthesis with the score that already earned.
+- The user is repeating themselves on a question — push it into the synthesis with the score it has already earned.
 - The user signals fatigue or asks for the summary.
 - New questions are no longer producing new information.
 
-If the thesis is in genuinely good shape (aggregate ≥ +0.40), say so plainly in the synthesis. False low scores burn trust and make the next audit less useful.
+If the aggregate lands in Solid or Exceptional, say so in the synthesis without hedging — false low scores burn trust and make the next audit less useful.
