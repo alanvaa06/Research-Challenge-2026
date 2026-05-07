@@ -36,7 +36,7 @@ Source framework: WOK Audit Framework (Dan the Quant). Philosophical lineage cit
 - Is the reasoning circular — does the conclusion sneak into the premises (e.g., "this works because the backtest says it works")?
 - If you removed every empirical input and reasoned from first principles, would the conclusion still hold? If not, what are you really claiming to know?
 
-**Failure modes:** Circular reasoning, overfitting logic to a desired conclusion, treating model output as reality, mistaking correlation with causation, hidden assumptions doing the work.
+**Failure modes:** Circular reasoning, overfitting logic to a desired conclusion, treating model output as reality, mistaking correlation for causation, hidden assumptions doing the work.
 
 **AI-Specific Risk:** AI reasons fluently within its training distribution with no awareness of when it has left it. High Reason scores in AI output do not imply the reasoning is grounded in current or relevant data. Ask: what would the model not know that a 2026 practitioner would?
 
