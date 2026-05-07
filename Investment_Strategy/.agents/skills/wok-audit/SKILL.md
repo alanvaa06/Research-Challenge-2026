@@ -51,3 +51,63 @@ If the memo is missing or thin, ask once for it before probing — then proceed 
 | 8 | Faith            | Is sustained conviction through disconfirmation defensible? |
 
 Per-WOK question banks (L1 / L2 / L3), failure modes, AI-specific risks, and discipline-calibration anchors live in [`references/wok_question_bank.md`](references/wok_question_bank.md). Pull from it as the conversation enters each lens. Don't read questions verbatim — adapt to the user's terminology and to what they have already said.
+
+## Scoring Rule
+
+**Per WOK.** Two dimensions:
+
+- **Deployment** ∈ {0, 1} — is the WOK actively present in the thesis?
+- **Discipline** ∈ {-1, 0, +1} — if deployed, how rigorously? +1 truth-seeking and falsification-friendly · 0 present but unexamined · -1 misleading or confirmation-seeking.
+
+**Score = Deployment × Discipline ∈ {-1, 0, +1}.**
+
+**Aggregate = Σ(eight scores) ÷ 8 ∈ [-1, +1].**
+
+**Bands:**
+
+| Band | Range | Meaning |
+|---|---|---|
+| Exceptional | +0.70 to +1.00 | Exceptional epistemic diversity |
+| Solid | +0.40 to +0.69 | Solid; some WOKs underdeveloped |
+| Adequate-with-gaps | +0.10 to +0.39 | Adequate but significant gaps |
+| Compromised | -0.10 to +0.09 | Serious epistemological problems |
+| Deeply problematic | below -0.10 | Foundationally weak |
+
+The score is a conversation prompt, not a verdict. Every cell in the scorecard cites a one-sentence user answer as evidence. The user always sees what earned the score and can challenge it.
+
+Discipline-calibration anchors per WOK (what +1, 0, and -1 look like in practice) live in `references/wok_question_bank.md`. Use them — don't score from instinct.
+
+## Session Structure
+
+Run the session in four phases. Don't announce the phase names; walk the user through.
+
+### Phase 1 — Frame (1–2 turns)
+
+Restate the thesis in one paragraph and confirm with the user. Surface:
+
+- The central claim — what is the user *claiming to know*?
+- The falsifying condition — what would make them abandon it?
+- The time horizon over which the thesis is supposed to play out.
+
+Don't move on until the user agrees the framing is correct. A misframed thesis produces a useless audit.
+
+### Phase 2 — Triage (1 turn)
+
+Propose the 3–4 highest-leverage WOKs based on the thesis content. The user confirms or swaps. Heuristics:
+
+- Thesis built on backtest → Sense Perception, Memory, Reason
+- Thesis built on personal intuition + small sample → Intuition, Faith, Imagination
+- Thesis from an AI-generated screen or factor → Reason, Language, plus AI-Specific Risks across all eight
+- Thesis built on conviction held through prior drawdown → Faith, Emotion, Memory
+
+The remaining WOKs still get a single L1 framing question in Phase 3 — they are *not* skipped, only light-touched.
+
+### Phase 3 — Probe (the bulk of the session)
+
+Deep-walk the 3–4 triaged WOKs using L1/L2/L3 questions from the question bank. Light-touch the rest with one L1 question each. Two to three questions per turn. Wait for the user.
+
+Score each WOK as evidence accumulates. If the user gives a thin answer, ask a sharper variant on the same lens *before* scoring. The score is the conversation, not a guess.
+
+### Phase 4 — Synthesize
+
+Emit the scorecard (template below). Present inline. The user pastes it into `docs/context/memory.md` or hands it to the team lead. Do not write to memory.md automatically — that is the user's call.
