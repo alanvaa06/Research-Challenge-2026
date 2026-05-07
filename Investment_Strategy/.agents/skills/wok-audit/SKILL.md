@@ -134,7 +134,7 @@ End with this written summary the user can paste into `docs/context/memory.md` o
 | Intuition        | ...    |   ...      | ...   | ...               |
 | Faith            | ...    |   ...      | ...   | ...               |
 
-**Aggregate:** [sum]/8 = [score]  →  Band: [exceptional / solid / adequate-with-gaps / compromised / deeply problematic]
+**Aggregate:** [sum]/8 = [score]  →  Band: [Exceptional / Solid / Adequate-with-gaps / Compromised / Deeply problematic]
 
 ## Top lenses pulling the score down (up to 3)
 List in priority order. If fewer than three lenses are pulling the score down, list only those. If none, write "No material lenses pulling the score down."
