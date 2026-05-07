@@ -9,3 +9,4 @@
 # custom-calc-modules: Investment_Strategy/src/data_curator/ registered in run_data_curator.py.
 # testing: none found.
 # governance: AGENTS.md (imported by CLAUDE.md) — Plan-before-act, Context/MEMORY.md + Context/SELF-CORRECTION.md required.
+# wok-audit-skill: 2026-05-06 — adopted WOK Audit Framework as sibling Socratic-coach skill to roast-me; epistemic lens (Reason / Sense Perception / Language / Memory / Imagination / Emotion / Intuition / Faith); thesis-only input; scored Deployment×Discipline ∈ [-1,+1].
