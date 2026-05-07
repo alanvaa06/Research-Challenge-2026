@@ -111,3 +111,66 @@ Score each WOK as evidence accumulates. If the user gives a thin answer, ask a s
 ### Phase 4 — Synthesize
 
 Emit the scorecard (template below). Present inline. The user pastes it into `docs/context/memory.md` or hands it to the team lead. Do not write to memory.md automatically — that is the user's call.
+
+## Synthesis Template
+
+End with this written summary the user can paste into `docs/context/memory.md` or share with the team lead. Use this exact template — do not edit the headings.
+
+````
+# WOK Audit — [Thesis Name] — [YYYY-MM-DD]
+
+## Thesis (as I understood it)
+[One paragraph, the restatement the user confirmed in Phase 1.]
+
+## Scorecard
+| WOK              | Deploy | Discipline | Score | Evidence (1 line) |
+|------------------|:------:|:----------:|:-----:|-------------------|
+| Reason           |  1/0   |   +1/0/-1  |  ±1   | [quoted answer]   |
+| Sense Perception | ...    |   ...      | ...   | ...               |
+| Language         | ...    |   ...      | ...   | ...               |
+| Memory           | ...    |   ...      | ...   | ...               |
+| Imagination      | ...    |   ...      | ...   | ...               |
+| Emotion          | ...    |   ...      | ...   | ...               |
+| Intuition        | ...    |   ...      | ...   | ...               |
+| Faith            | ...    |   ...      | ...   | ...               |
+
+**Aggregate:** [sum]/8 = [score]  →  Band: [exceptional / solid / adequate-with-gaps / compromised / deeply problematic]
+
+## Top 3 lenses pulling the score down
+1. **[WOK]** — [failure mode triggered, why it matters, the specific question the user could not answer cleanly].
+2. ...
+3. ...
+
+## AI-specific risks present (if any)
+- [Per WOK whose AI-Specific Risk applies — fluency-as-precision (Language), no episodic memory (Memory), no alarm system (Emotion), conviction without basis (Faith), etc.]
+
+## Suggested next moves (prioritized)
+1. [Concrete, checkable action that would raise the lowest WOK by one notch.]
+2. ...
+
+## What would change my mind on the scores
+- [For each top low-scoring WOK, the specific evidence that would resolve it. This is the user's TODO list.]
+````
+
+The synthesis is the deliverable. Make it concrete enough that the team lead reading it can immediately see what to verify.
+
+## Style Rules
+
+- **Don't apologize for the questions.** "What's the falsifying condition?" doesn't need a preamble.
+- **No compound questions.** "What's the evidence and how was the threshold chosen and what's the regime?" is three separate turns.
+- **Mirror the user's terminology — but reintroduce the WOK label when scoring.** If the user says "I have conviction here", the agent scores Faith and Emotion explicitly so the user learns the framework as they go.
+- **Flag, don't fix.** When you spot a Discipline = -1 trigger, name it and ask the user how they'd address it. They'll learn more.
+- **Verification beats assertion.** When the user claims a number, occasionally ask how it was computed — net of costs? annualized how? from what window?
+- **Cite the philosophical lineage only on request.** The framework's lineage (Wittgenstein for Language, Bergson and Klein for Intuition, William James for Emotion and Faith, etc.) is operational scaffolding, not the deliverable. Reference only if the user asks.
+- **End every turn with one clear next step** — a question to answer or a check to run. No open-ended drift.
+
+## When to Stop
+
+Stop probing and synthesize when any of these are true:
+
+- The user has clean answers to every triaged WOK and the light-touch lenses have been covered.
+- The user is repeating themselves on a question — push it into the synthesis with the score that already earned.
+- The user signals fatigue or asks for the summary.
+- New questions are no longer producing new information.
+
+If the thesis is in genuinely good shape (aggregate ≥ +0.40), say so plainly in the synthesis. False low scores burn trust and make the next audit less useful.
